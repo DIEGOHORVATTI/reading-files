@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { parse } from 'papaparse';
 import { read, utils } from 'xlsx';
 
@@ -10,75 +10,211 @@ type DataRow = {
   id: string;
 };
 
+type LoadLog = {
+  fileSize: number | null; // Peso do arquivo
+  uploadTime: number | null; // Tempo de upload
+  renderTime: number | null; // Tempo de renderização
+  fileType: string | null; // Tipo de arquivo
+};
+
 const App = () => {
   const [data, setData] = useState<DataRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingTime, setLoadingTime] = useState(0);
+  const [loadLog, setLoadLog] = useState<LoadLog>({
+    fileSize: null,
+    uploadTime: null,
+    renderTime: null,
+    fileType: null
+  });
 
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const renderTimeStartRef = useRef<number | null>(null); // Referência para o tempo de renderização
+
+  // Função para calcular o tempo de carregamento
+  const startLoadingTimer = () => {
+    startTimeRef.current = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      if (startTimeRef.current) {
+        setLoadingTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }
+    }, 1000);
+  };
+
+  // Função para parar o timer
+  const stopLoadingTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    setLoading(false);
+  };
+
+  // Função para ler o arquivo CSV
+  const handleCSVUpload = (file: File) => {
+    const fileStartTime = Date.now();
+    setLoadLog((prev) => ({ ...prev, fileSize: file.size, fileType: 'CSV' }));
+
+    parse<DataRow>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (result) => {
+        setData(result.data.slice(0, 10)); // Limita a 10 linhas
+        const uploadTime = Date.now() - fileStartTime;
+        const renderTimeStart = Date.now(); // Marcar o início do tempo de renderização
+
+        setLoadLog((prev) => ({
+          ...prev,
+          uploadTime: Math.floor(uploadTime / 1000) // Tempo de upload
+        }));
+
+        // Salvar o tempo de renderização
+        renderTimeStartRef.current = renderTimeStart;
+
+        stopLoadingTimer();
+      }
+    });
+  };
+
+  // Função para ler o arquivo Excel (XLSX)
+  const handleExcelUpload = (file: File) => {
+    const fileStartTime = Date.now();
+    setLoadLog((prev) => ({ ...prev, fileSize: file.size, fileType: 'Excel' }));
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const workbook = read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = utils.sheet_to_json<DataRow>(sheet);
+      setData(jsonData.slice(0, 10)); // Limita a 10 linhas
+
+      const uploadTime = Date.now() - fileStartTime;
+      const renderTimeStart = Date.now(); // Marcar o início do tempo de renderização
+
+      setLoadLog((prev) => ({
+        ...prev,
+        uploadTime: Math.floor(uploadTime / 1000) // Tempo de upload
+      }));
+
+      // Salvar o tempo de renderização
+      renderTimeStartRef.current = renderTimeStart;
+
+      stopLoadingTimer();
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // Função para ler o arquivo TXT
+  const handleTXTUpload = (file: File) => {
+    const fileStartTime = Date.now();
+    setLoadLog((prev) => ({ ...prev, fileSize: file.size, fileType: 'TXT' }));
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      const lines = content.split('\n').map((line) => {
+        // Aqui você pode tratar cada linha do arquivo TXT como dados de uma linha de uma tabela
+        const columns = line.split(','); // Se o arquivo TXT for CSV separado por vírgula
+        return {
+          nome: columns[0] || '',
+          telefone: columns[1] || '',
+          endereço: columns[2] || '',
+          cpf: columns[3] || '',
+          id: columns[4] || ''
+        };
+      });
+      setData(lines.slice(0, 10)); // Limita a 10 linhas
+
+      const uploadTime = Date.now() - fileStartTime;
+      const renderTimeStart = Date.now(); // Marcar o início do tempo de renderização
+
+      setLoadLog((prev) => ({
+        ...prev,
+        uploadTime: Math.floor(uploadTime / 1000) // Tempo de upload
+      }));
+
+      // Salvar o tempo de renderização
+      renderTimeStartRef.current = renderTimeStart;
+
+      stopLoadingTimer();
+    };
+    reader.readAsText(file);
+  };
+
+  // Função principal para carregar o arquivo
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    if (!file) return;
 
-    if (file) {
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    setLoading(true);
+    setLoadingTime(0); // Reseta o tempo de carregamento
+    startLoadingTimer();
 
-      setLoading(true);
-
-      if (fileExtension === 'csv') {
-        // Leitura de arquivos CSV com PapaParse
-        parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (result) => {
-            setData((result.data as DataRow[]).slice(0, 10)); // Limita a 10 linhas
-            setLoading(false);
-          }
-        });
-      } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-        // Leitura de arquivos Excel com XLSX
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0]; // Obtém a primeira aba
-          const sheet = workbook.Sheets[sheetName];
-          const jsonData = utils.sheet_to_json<DataRow>(sheet); // Converte para JSON
-          setData(jsonData.slice(0, 10)); // Limita a 10 linhas
-          setLoading(false);
-        };
-        reader.readAsArrayBuffer(file);
-      } else {
+    switch (fileExtension) {
+      case 'csv':
+        handleCSVUpload(file);
+        break;
+      case 'xlsx':
+      case 'xls':
+        handleExcelUpload(file);
+        break;
+      case 'txt':
+        handleTXTUpload(file);
+        break;
+      default:
         alert(
-          'Formato de arquivo não suportado. Envie um arquivo CSV ou Excel.'
+          'Formato de arquivo não suportado. Envie um arquivo CSV, Excel ou TXT.'
         );
-        setLoading(false);
-      }
+        stopLoadingTimer();
     }
   };
 
+  useEffect(() => {
+    // Quando os dados são carregados, calcule o tempo de renderização
+    if (data.length > 0 && renderTimeStartRef.current) {
+      const renderTime = Math.floor(
+        (Date.now() - renderTimeStartRef.current) / 1000
+      );
+      setLoadLog((prev) => ({
+        ...prev,
+        renderTime: renderTime
+      }));
+    }
+  }, [data]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  // Componente de loader
   const fileUploadLoader = (
-    <p className="text-gray-500 mt-4">Carregando arquivo...</p>
+    <div className="mt-4">
+      <h2 className="text-gray-500">Carregando arquivo...</h2>
+    </div>
   );
+
+  // Componente de tabela de dados
   const dataTable = (
     <table className="table-auto w-full border-collapse border border-gray-100 mt-4 rounded-lg shadow-sm">
       <thead>
         <tr className="bg-gray-100 text-left">
-          <th className="border px-4 py-2 text-sm font-semibold text-gray-700">
-            Nome
-          </th>
-          <th className="border px-4 py-2 text-sm font-semibold text-gray-700">
-            Telefone
-          </th>
-          <th className="border px-4 py-2 text-sm font-semibold text-gray-700">
-            Endereço
-          </th>
-          <th className="border px-4 py-2 text-sm font-semibold text-gray-700">
-            CPF
-          </th>
-          <th className="border px-4 py-2 text-sm font-semibold text-gray-700">
-            ID
-          </th>
+          {['Nome', 'Telefone', 'Endereço', 'CPF', 'ID'].map((header) => (
+            <th
+              key={header}
+              className="border px-4 py-2 text-sm font-semibold text-gray-700"
+            >
+              {header}
+            </th>
+          ))}
         </tr>
       </thead>
-
       <tbody>
         {data.map((row, index) => (
           <tr
@@ -96,24 +232,53 @@ const App = () => {
     </table>
   );
 
+  // Componente de mensagem caso nenhum arquivo tenha sido carregado
   const noFileUploadedMessage = (
     <p className="text-gray-500 mt-4">Nenhum arquivo carregado.</p>
   );
 
+  // Exibe os logs detalhados
+  const renderLogs = (
+    <div className="mt-4 text-sm text-gray-600">
+      <p>
+        <strong>Tempo de carregamento do arquivo:</strong> {loadingTime}{' '}
+        segundos
+      </p>
+      <p>
+        <strong>Peso do arquivo:</strong>{' '}
+        {loadLog.fileSize
+          ? `${(loadLog.fileSize / 1024).toFixed(2)} KB`
+          : 'N/A'}
+      </p>
+      <p>
+        <strong>Tempo de upload:</strong>{' '}
+        {loadLog.uploadTime ? `${loadLog.uploadTime}s` : 'N/A'}
+      </p>
+      <p>
+        <strong>Tempo de renderização:</strong>{' '}
+        {loadLog.renderTime ? `${loadLog.renderTime}s` : 'N/A'}
+      </p>
+      <p>
+        <strong>Tipo de arquivo:</strong> {loadLog.fileType || 'N/A'}
+      </p>
+    </div>
+  );
+
   return (
     <div className="h-screen font-sans text-gray-500 bg-gray-200">
-      <div className="flex justify-center w-full mx-auto sm:max-w-lg">
-        <div className="flex flex-col items-center justify-center w-full h-auto my-20 bg-white sm:w-3/4 sm:rounded-lg sm:shadow-xl">
+      <div className="flex flex-row items-center justify-center w-full h-auto p-20 space-x-4">
+        <div className="flex flex-col items-center justify-center w-full h-auto bg-white sm:w-3/4 sm:rounded-lg sm:shadow-xl">
           <div className="mt-10 mb-10 text-center">
             <h2 className="text-2xl font-semibold mb-2">
               Carregar seus arquivos
             </h2>
-            <p className="text-xs text-gray-500">Formato: .csv ou .xlsx</p>
+            <p className="text-xs text-gray-500">
+              Formato: .csv, .xlsx ou .txt
+            </p>
           </div>
-
           <form
             action="#"
-            className="relative w-4/5 h-32 max-w-xs mb-10 bg-white bg-gray-100 rounded-lg shadow-inner"
+            className="relative flex flex-col items-center justify-center w-full h-64 border-dashed border-2 border-gray-200 rounded-lg cursor-pointer"
           >
             <input
               type="file"
@@ -138,6 +303,15 @@ const App = () => {
               </svg>
             </label>
           </form>
+        </div>
+
+        <div className="flex flex-col items-center justify-center w-full h-auto my-20 bg-white sm:w-3/4 sm:rounded-lg sm:shadow-xl">
+          <div className="mt-10 mb-10 text-center">
+            <h2 className="text-1xl font-semibold mb-2">
+              Tempo de carregamento
+            </h2>
+            <p className="text-xs text-gray-500">{renderLogs}</p>
+          </div>
         </div>
       </div>
 
