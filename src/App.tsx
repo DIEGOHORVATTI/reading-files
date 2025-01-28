@@ -11,10 +11,10 @@ type DataRow = {
 };
 
 type LoadLog = {
-  fileSize: number | null; // Peso do arquivo
-  uploadTime: number | null; // Tempo de upload
-  renderTime: number | null; // Tempo de renderização
-  fileType: string | null; // Tipo de arquivo
+  fileSize: number | null;
+  uploadTime: number | null;
+  renderTime: number | null;
+  fileType: string | null;
 };
 
 const App = () => {
@@ -30,9 +30,8 @@ const App = () => {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
-  const renderTimeStartRef = useRef<number | null>(null); // Referência para o tempo de renderização
+  const renderTimeStartRef = useRef<number | null>(null);
 
-  // Função para calcular o tempo de carregamento
   const startLoadingTimer = () => {
     startTimeRef.current = Date.now();
     if (timerRef.current) clearInterval(timerRef.current);
@@ -44,7 +43,6 @@ const App = () => {
     }, 1000);
   };
 
-  // Função para parar o timer
   const stopLoadingTimer = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -52,7 +50,6 @@ const App = () => {
     setLoading(false);
   };
 
-  // Função para ler o arquivo CSV
   const handleCSVUpload = (file: File) => {
     const fileStartTime = Date.now();
     setLoadLog((prev) => ({ ...prev, fileSize: file.size, fileType: 'CSV' }));
@@ -61,16 +58,15 @@ const App = () => {
       header: true,
       skipEmptyLines: true,
       complete: (result) => {
-        setData(result.data.slice(0, 10)); // Limita a 10 linhas
+        setData(result.data.slice(0, 10));
         const uploadTime = Date.now() - fileStartTime;
-        const renderTimeStart = Date.now(); // Marcar o início do tempo de renderização
+        const renderTimeStart = Date.now();
 
         setLoadLog((prev) => ({
           ...prev,
-          uploadTime: Math.floor(uploadTime / 1000) // Tempo de upload
+          uploadTime: Math.floor(uploadTime / 1000)
         }));
 
-        // Salvar o tempo de renderização
         renderTimeStartRef.current = renderTimeStart;
 
         stopLoadingTimer();
@@ -78,7 +74,6 @@ const App = () => {
     });
   };
 
-  // Função para ler o arquivo Excel (XLSX)
   const handleExcelUpload = (file: File) => {
     const fileStartTime = Date.now();
     setLoadLog((prev) => ({ ...prev, fileSize: file.size, fileType: 'Excel' }));
@@ -90,17 +85,16 @@ const App = () => {
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
       const jsonData = utils.sheet_to_json<DataRow>(sheet);
-      setData(jsonData.slice(0, 10)); // Limita a 10 linhas
+      setData(jsonData.slice(0, 10));
 
       const uploadTime = Date.now() - fileStartTime;
-      const renderTimeStart = Date.now(); // Marcar o início do tempo de renderização
+      const renderTimeStart = Date.now();
 
       setLoadLog((prev) => ({
         ...prev,
-        uploadTime: Math.floor(uploadTime / 1000) // Tempo de upload
+        uploadTime: Math.floor(uploadTime / 1000)
       }));
 
-      // Salvar o tempo de renderização
       renderTimeStartRef.current = renderTimeStart;
 
       stopLoadingTimer();
@@ -108,7 +102,6 @@ const App = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  // Função para ler o arquivo TXT
   const handleTXTUpload = (file: File) => {
     const fileStartTime = Date.now();
     setLoadLog((prev) => ({ ...prev, fileSize: file.size, fileType: 'TXT' }));
@@ -117,8 +110,7 @@ const App = () => {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const lines = content.split('\n').map((line) => {
-        // Aqui você pode tratar cada linha do arquivo TXT como dados de uma linha de uma tabela
-        const columns = line.split(','); // Se o arquivo TXT for CSV separado por vírgula
+        const columns = line.split(';');
         return {
           nome: columns[0] || '',
           telefone: columns[1] || '',
@@ -127,17 +119,16 @@ const App = () => {
           id: columns[4] || ''
         };
       });
-      setData(lines.slice(0, 10)); // Limita a 10 linhas
+      setData(lines.slice(0, 10));
 
       const uploadTime = Date.now() - fileStartTime;
-      const renderTimeStart = Date.now(); // Marcar o início do tempo de renderização
+      const renderTimeStart = Date.now();
 
       setLoadLog((prev) => ({
         ...prev,
-        uploadTime: Math.floor(uploadTime / 1000) // Tempo de upload
+        uploadTime: Math.floor(uploadTime / 1000)
       }));
 
-      // Salvar o tempo de renderização
       renderTimeStartRef.current = renderTimeStart;
 
       stopLoadingTimer();
@@ -145,14 +136,13 @@ const App = () => {
     reader.readAsText(file);
   };
 
-  // Função principal para carregar o arquivo
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     setLoading(true);
-    setLoadingTime(0); // Reseta o tempo de carregamento
+    setLoadingTime(0);
     startLoadingTimer();
 
     switch (fileExtension) {
@@ -175,7 +165,6 @@ const App = () => {
   };
 
   useEffect(() => {
-    // Quando os dados são carregados, calcule o tempo de renderização
     if (data.length > 0 && renderTimeStartRef.current) {
       const renderTime = Math.floor(
         (Date.now() - renderTimeStartRef.current) / 1000
@@ -193,14 +182,12 @@ const App = () => {
     };
   }, []);
 
-  // Componente de loader
   const fileUploadLoader = (
     <div className="mt-4">
       <h2 className="text-gray-500">Carregando arquivo...</h2>
     </div>
   );
 
-  // Componente de tabela de dados
   const dataTable = (
     <table className="table-auto w-full border-collapse border border-gray-100 mt-4 rounded-lg shadow-sm">
       <thead>
@@ -232,12 +219,10 @@ const App = () => {
     </table>
   );
 
-  // Componente de mensagem caso nenhum arquivo tenha sido carregado
   const noFileUploadedMessage = (
     <p className="text-gray-500 mt-4">Nenhum arquivo carregado.</p>
   );
 
-  // Exibe os logs detalhados
   const renderLogs = (
     <div className="mt-4 text-sm text-gray-600">
       <p>
@@ -297,7 +282,7 @@ const App = () => {
                 className="z-10 w-8 h-8 text-indigo-400"
                 fill="currentColor"
                 viewBox="0 0 20 20"
-                xmlns="http://www.w3.org/2000/svg"
+                xmlns=""
               >
                 <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path>
               </svg>
